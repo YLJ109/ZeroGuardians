@@ -143,7 +143,11 @@ def load_input_config(path: str | None = None) -> dict:
 
 
 def save_input_config(path: str, data: dict) -> None:
-    """落盘（把 source 元组转回字符串）。"""
+    """落盘（把 source 元组转回字符串）。
+
+    会自动创建父目录：全新 clone / 解压出来的工程里 `config/` 可能并不存在
+    （git 不跟踪空目录），此时首跑写默认键位不能失败。
+    """
     out = {"slots": []}
     for slot in data["slots"]:
         bindings = {}
@@ -154,5 +158,8 @@ def save_input_config(path: str, data: dict) -> None:
             entry["guid"] = slot["guid"]
         entry["bindings"] = bindings
         out["slots"].append(entry)
+    parent = os.path.dirname(os.path.abspath(path))
+    if parent:
+        os.makedirs(parent, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2, ensure_ascii=False)
