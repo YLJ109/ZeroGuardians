@@ -6,7 +6,8 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame](https://img.shields.io/badge/pygame-2.6-2C2D72?logo=python&logoColor=white)](https://www.pygame.org/)
-[![tests](https://img.shields.io/badge/tests-64%20passed-4CAF50)](#测试与自检)
+[![CI](https://github.com/YLJ109/ZeroGuardians/actions/workflows/ci.yml/badge.svg)](https://github.com/YLJ109/ZeroGuardians/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-66%20passed-4CAF50)](#测试与自检)
 [![assets](https://img.shields.io/badge/assets-CC0%20%2B%20OFL-brightgreen)](#素材与许可)
 [![license](https://img.shields.io/badge/code-MIT-blue)](LICENSE)
 
@@ -138,7 +139,7 @@ ZeroGuardians/
 ## 测试与自检
 
 ```bash
-python tests/run.py                                            # 64 项断言
+python tests/run.py                                            # 66 项断言
 SDL_VIDEODRIVER=dummy python tools/render_check.py             # 全量场景截图自检
 SDL_VIDEODRIVER=dummy python tools/render_check.py --readme --out docs/screenshots
 ```
@@ -175,6 +176,8 @@ SDL_VIDEODRIVER=dummy python tools/render_check.py --readme --out docs/screensho
 | `assets/vendor/kenney_interface_sounds/` | UI 音效 | **CC0 1.0** |
 | `assets/vendor/noto_sans_sc/` | Noto Sans SC 中文子集（862KB / 3,964 字） | **SIL OFL 1.1** |
 
+完整清单与再分发注意事项见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
 仓库不包含任何来源不明或许可未确认的素材：
 旧工程素材（`assets/img`、`wav`、`video`、`font`，来源不明 / 非 OFL 字体）已在 `.gitignore` 中排除，
 渲染层也完全不引用它们。子集字体可用 `tools/build_font_subset.py` 复现。
@@ -184,6 +187,7 @@ SDL_VIDEODRIVER=dummy python tools/render_check.py --readme --out docs/screensho
 - [`docs/GDD.md`](docs/GDD.md) — 游戏设计文档（数值、关卡原则、验收标准）
 - [`docs/ASSETS_EXTERNAL.md`](docs/ASSETS_EXTERNAL.md) — 外部素材来源、许可与获取通道
 - [`docs/ASSETS.md`](docs/ASSETS.md) — 素材清单与替换记录
+- [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) — 第三方素材许可汇总
 
 ---
 

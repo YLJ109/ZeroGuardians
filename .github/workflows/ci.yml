@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 测试与无头自检
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 跑测试套件（不依赖 pytest）
+        run: python tests/run.py
+
+      - name: 无头冒烟运行
+        run: python main.py --headless --frames 600
+
+      - name: 渲染自检（全场景出图，确认素材真的接上了）
+        run: python tools/render_check.py --out /tmp/shots
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: render-shots
+          path: /tmp/shots
+          retention-days: 7

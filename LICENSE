@@ -19,18 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-## 第三方素材许可（Third-party assets）
-
-本仓库代码以 MIT 授权；**随包素材各自遵循其原始许可**，与上面的 MIT 条款相互独立：
-
-| 路径 | 内容 | 许可 |
-| --- | --- | --- |
-| `assets/vendor/kenney_new_platformer/` | 角色 / 敌人 / 地形 / 道具 / 背景 / 音效 | **CC0 1.0**（公有领域，Kenney.nl） |
-| `assets/vendor/kenney_interface_sounds/` | UI 音效 | **CC0 1.0**（Kenney.nl） |
-| `assets/vendor/noto_sans_sc/` | Noto Sans SC 中文子集字体 | **SIL Open Font License 1.1** |
-
-各目录内均保留了原始 `License.txt` / `LICENSE.txt` 全文。
-CC0 与 OFL 素材可自由分发，但再分发时请保留相应许可文件。
