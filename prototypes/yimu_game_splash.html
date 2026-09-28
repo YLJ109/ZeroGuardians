@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>YIMU GAME — Studio Splash</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@200;300;400;600&family=Oswald:wght@300;400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ============ BASE ============ */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+  body {
+    font-family: "Montserrat", "Helvetica Neue", Arial, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+  }
+
+  #stage {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #050608;
+    transition: opacity 1.1s ease;
+  }
+  #stage.skip { opacity: 0; }
+
+  /* Faint vignette + top glow — subtle, no clutter */
+  #stage::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 90% at 50% 42%, rgba(255,255,255,0.05), rgba(0,0,0,0) 60%);
+    opacity: 0; transition: opacity 1.4s ease;
+  }
+  #stage.run::before { opacity: 1; }
+
+  /* ============ LETTERBOX (cinematic only) ============ */
+  .bar { position: absolute; left: 0; right: 0; height: 0; background: #000; z-index: 5; }
+  .bar.top { top: 0; } .bar.bottom { bottom: 0; }
+  #stage.run.theme-cinematic .bar { animation: bars 1.2s cubic-bezier(.2,.7,.2,1) forwards; }
+  @keyframes bars { to { height: 7vh; } }
+
+  /* ============ CENTER WRAP ============ */
+  .wrap { position: relative; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 1.6vh; }
+
+  /* ============ EMBLEM (SVG) ============ */
+  .emblem { width: clamp(46px, 7vh, 78px); height: clamp(46px, 7vh, 78px); opacity: 0; }
+  #stage.run .emblem { animation: emIn 1.1s ease forwards; animation-delay: .15s; }
+  @keyframes emIn { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: none; } }
+  .emblem circle, .emblem path { fill: none; stroke-width: 2; }
+  #stage.run.theme-cinematic .emblem circle,
+  #stage.run.theme-cinematic .emblem path { stroke-dasharray: 220; stroke-dashoffset: 220; animation: draw 1.6s ease forwards; animation-delay: .15s; }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+
+  /* ============ WORDMARK ============ */
+  .wordmark {
+    position: relative; display: flex; align-items: baseline; justify-content: center;
+    font-family: "Oswald", "Montserrat", sans-serif;
+    font-weight: 400;
+    font-size: clamp(34px, 8.2vw, 96px);
+    letter-spacing: .22em;
+    line-height: 1; white-space: nowrap;
+  }
+  .wordmark .ltr {
+    display: inline-block; opacity: 0; transform: translateY(16px); filter: blur(7px);
+    color: #f4f5f7;
+  }
+  #stage.run .wordmark .ltr {
+    animation: reveal .8s cubic-bezier(.2,.7,.2,1) forwards;
+    animation-delay: calc(.85s + var(--i) * .06s);
+  }
+  @keyframes reveal { to { opacity: 1; transform: none; filter: none; } }
+
+  /* moving sheen across the wordmark */
+  .sheen {
+    position: absolute; top: -10%; bottom: -10%; width: 40%; left: -45%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+    transform: skewX(-18deg); opacity: 0; pointer-events: none;
+  }
+  #stage.run .sheen { animation: sweep 1.1s ease-in-out 2.0s 1; }
+  @keyframes sweep { 0% { left: -45%; opacity: 0; } 12% { opacity: .9; } 100% { left: 115%; opacity: 0; } }
+
+  /* ============ PRESENTS + TAGLINE ============ */
+  .presents {
+    opacity: 0; font-weight: 300; color: #9aa0ab;
+    font-size: clamp(10px, 1.5vw, 15px); letter-spacing: .42em; text-transform: uppercase;
+  }
+  #stage.run .presents { animation: fadeUp 1s ease forwards; animation-delay: 2.35s; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .tagline {
+    opacity: 0; color: #6b7280; font-weight: 300;
+    font-size: clamp(8px, 1.1vw, 11px); letter-spacing: .34em; text-transform: uppercase;
+  }
+  #stage.run .tagline { animation: fadeUp 1s ease forwards; animation-delay: 2.75s; }
+
+  /* subtle breathing after reveal (kept very restrained) */
+  #stage.run .wordmark { animation: breathe 4.5s ease-in-out 3.4s infinite; }
+  @keyframes breathe { 0%,100% { opacity: 1; } 50% { opacity: .93; } }
+
+  /* ============ DUST (cinematic only) ============ */
+  .dust { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity 1.2s ease; }
+  #stage.run.theme-cinematic .dust { opacity: 1; }
+  .dust i {
+    position: absolute; width: 3px; height: 3px; border-radius: 50%;
+    background: rgba(220,228,240,.9); filter: blur(.6px);
+    animation: drift linear infinite;
+  }
+  @keyframes drift {
+    from { transform: translateY(8vh) translateX(0); opacity: 0; }
+    10%, 90% { opacity: .5; }
+    to { transform: translateY(-92vh) translateX(14px); opacity: 0; }
+  }
+
+  /* ============ THEME: ELEGANT (monochrome) ============ */
+  .theme-elegant #stage, .theme-elegant #stage { background: #060606; }
+  .theme-elegant .wordmark { font-weight: 200; letter-spacing: .34em; }
+  .theme-elegant .wordmark .ltr { color: #f6f6f6; }
+  .theme-elegant .emblem { display: none; }
+  .theme-elegant .presents { color: #82878f; }
+  .theme-elegant .tagline { display: none; }
+
+  /* ============ THEME: CINEMATIC (studio) ============ */
+  .theme-cinematic #stage { background: radial-gradient(130% 100% at 50% 38%, #0c0f17 0%, #05060a 70%); }
+  .theme-cinematic .wordmark {
+    font-weight: 300;
+    background: linear-gradient(180deg, #ffffff 0%, #c9d2e4 48%, #ffffff 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .theme-cinematic .emblem circle, .theme-cinematic .emblem path { stroke: #cdd6e6; }
+  .theme-cinematic .presents { color: #aab1bd; }
+  .theme-cinematic .tagline { display: block; }
+
+  /* ============ THEME: SIGNAL (tech accent) ============ */
+  .theme-signal #stage { background: radial-gradient(120% 90% at 50% 50%, #06121a 0%, #04070b 75%); }
+  .theme-signal .wordmark { font-weight: 400; letter-spacing: .26em; }
+  .theme-signal .wordmark .ltr { color: #eef3f7; text-shadow: 0 0 14px rgba(63,208,214,.22); }
+  .theme-signal .rule {
+    width: 0; height: 1px; margin-top: .4vh;
+    background: linear-gradient(90deg, transparent, #3fd0d6, transparent);
+    opacity: 0;
+  }
+  #stage.run.theme-signal .rule { animation: ruleIn 1s ease forwards; animation-delay: 2.0s; }
+  @keyframes ruleIn { to { width: clamp(160px, 26vw, 320px); opacity: .8; } }
+  .theme-signal .emblem { display: none; }
+  .theme-signal .presents { color: #5fa9b3; }
+
+  /* ============ HUD / CONTROLS ============ */
+  .hud {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    display: flex; gap: 8px; align-items: center; justify-content: center;
+    padding: 14px; flex-wrap: wrap;
+    background: linear-gradient(0deg, rgba(0,0,0,.55), transparent);
+    font-size: 12px; letter-spacing: .08em;
+  }
+  .hud .grp { display: flex; gap: 6px; align-items: center; }
+  .hud .lbl { color: #5b6470; margin-right: 2px; text-transform: uppercase; font-size: 10px; letter-spacing: .2em; }
+  .btn {
+    background: rgba(255,255,255,.06); color: #c8ced8; border: 1px solid rgba(255,255,255,.12);
+    padding: 6px 12px; border-radius: 999px; cursor: pointer; font-family: inherit; font-size: 12px;
+    letter-spacing: .04em; transition: all .2s ease;
+  }
+  .btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+  .btn.active { background: #fff; color: #111; border-color: #fff; }
+  .hint { position: fixed; top: 16px; right: 18px; z-index: 10; color: #4a515c; font-size: 11px; letter-spacing: .14em; }
+</style>
+</head>
+<body class="theme-cinematic">
+  <div id="stage" class="run">
+    <div class="bar top"></div>
+    <div class="bar bottom"></div>
+    <div class="dust" id="dust"></div>
+
+    <div class="wrap">
+      <svg class="emblem" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="42" />
+        <path d="M50 22 L50 78 M32 38 L68 38 M38 62 L62 62" />
+      </svg>
+
+      <div class="wordmark" id="word"><div class="sheen"></div></div>
+
+      <div class="presents">Presents</div>
+      <div class="tagline">A Zero Brother Interactive Experience</div>
+      <div class="rule"></div>
+    </div>
+  </div>
+
+  <div class="hint">按任意键跳过 · 点击风格切换预览</div>
+
+  <div class="hud">
+    <div class="grp">
+      <span class="lbl">风格</span>
+      <button class="btn" data-theme="theme-elegant">极简</button>
+      <button class="btn active" data-theme="theme-cinematic">电影感</button>
+      <button class="btn" data-theme="theme-signal">信号</button>
+    </div>
+    <div class="grp">
+      <button class="btn" id="replay">重播</button>
+      <button class="btn" id="skip">跳过</button>
+    </div>
+  </div>
+
+<script>
+(function () {
+  const WORD = "YIMU GAME";
+  const stage = document.getElementById("stage");
+  const word = document.getElementById("word");
+  const dust = document.getElementById("dust");
+
+  // build per-letter spans (keep the sheen node)
+  const sheen = word.querySelector(".sheen");
+  word.innerHTML = "";
+  word.appendChild(sheen);
+  [...WORD].forEach((ch, i) => {
+    const s = document.createElement("span");
+    s.className = "ltr";
+    s.style.setProperty("--i", i);
+    s.textContent = ch === " " ? " " : ch;
+    word.appendChild(s);
+  });
+
+  // build dust particles (cinematic)
+  for (let i = 0; i < 34; i++) {
+    const d = document.createElement("i");
+    d.style.left = Math.random() * 100 + "vw";
+    d.style.bottom = -10 + "vh";
+    const dur = 9 + Math.random() * 12;
+    d.style.animationDuration = dur + "s";
+    d.style.animationDelay = (-Math.random() * dur) + "s";
+    const sc = 0.5 + Math.random();
+    d.style.transform = "scale(" + sc + ")";
+    d.style.opacity = (0.25 + Math.random() * 0.4).toFixed(2);
+    dust.appendChild(d);
+  }
+
+  function replay() {
+    stage.classList.remove("run");
+    void stage.offsetWidth; // force reflow to restart animations
+    stage.classList.add("run");
+  }
+
+  // theme switch
+  document.querySelectorAll("[data-theme]").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.body.className = b.dataset.theme;
+      document.querySelectorAll("[data-theme]").forEach((x) => x.classList.remove("active"));
+      b.classList.add("active");
+      replay();
+    });
+  });
+
+  document.getElementById("replay").addEventListener("click", replay);
+  document.getElementById("skip").addEventListener("click", () => stage.classList.add("skip"));
+
+  // any key skips
+  window.addEventListener("keydown", () => stage.classList.add("skip"));
+  // click on stage also skips
+  stage.addEventListener("click", () => stage.classList.add("skip"));
+
+  // auto-loop the splash for hands-free review
+  let loopTimer = null;
+  function scheduleLoop() {
+    clearTimeout(loopTimer);
+    loopTimer = setTimeout(() => { if (!stage.classList.contains("skip")) replay(); }, 7200);
+  }
+  replay();
+  scheduleLoop();
+  // reschedule loop whenever we replay
+  const _replay = replay;
+  replay = function () { _replay(); scheduleLoop(); };
+})();
+</script>
+</body>
+</html>

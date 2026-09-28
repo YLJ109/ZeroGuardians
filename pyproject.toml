@@ -1,0 +1,20 @@
+[project]
+name = "zero-guardians"
+version = "0.6.0"
+description = "零零守护者 · Zero Guardians — 1-4 人同屏协作的多层立体平台跳跃游戏（Pygame 企业级重写版）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "pygame>=2.6",
+    "numpy>=1.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/YLJ109/ZeroGuardians"
+Repository = "https://github.com/YLJ109/ZeroGuardians"
+Issues = "https://github.com/YLJ109/ZeroGuardians/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
