@@ -6,7 +6,6 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame](https://img.shields.io/badge/pygame-2.6-2C2D72?logo=python&logoColor=white)](https://www.pygame.org/)
-[![CI](https://github.com/YLJ109/ZeroGuardians/actions/workflows/ci.yml/badge.svg)](https://github.com/YLJ109/ZeroGuardians/actions/workflows/ci.yml)
 [![tests](https://img.shields.io/badge/tests-66%20passed-4CAF50)](#测试与自检)
 [![assets](https://img.shields.io/badge/assets-CC0%20%2B%20OFL-brightgreen)](#素材与许可)
 [![license](https://img.shields.io/badge/code-MIT-blue)](LICENSE)
