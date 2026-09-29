@@ -1,6 +1,9 @@
 """角色选择场景（1-4 人）—— 两阶段向导 + 统一主题 UI。
 
 阶段 1 heroes：选择人数(1-4) + 每位活跃玩家用**自己的键位/手柄**循环切换英雄并「准备」。
+  交互双轨：键盘（1/2/3/4 选人数、← → 换英雄、跳键准备、Enter 一键全就绪）
+  + 鼠标（点人数胶囊、点英雄卡加入/取消准备），保证"没有小键盘 / 不记得键位"
+  也能把 3 人、4 人流程走完。
 阶段 2 level ：选择 1-15 关（L5/L10/L15 为 Boss），确认后进入 GameplayScene。
 展示使用 Kenney 真实角色素材（行走动画）+ 亲和宝石 + 技能汉化名。
 """
@@ -48,6 +51,43 @@ _MINIMAP = {
     "a": (120, 170, 255), "b": (245, 200, 90),
 }
 
+# pygame 键名 -> 卡面上显示的短名（只列容易读错的；其余走 K_xxx -> XXX 兜底）
+_KEY_ALIAS = {
+    "K_UP": "↑", "K_DOWN": "↓", "K_LEFT": "←", "K_RIGHT": "→",
+    "K_RETURN": "Enter", "K_SPACE": "空格", "K_LSHIFT": "Shift",
+    "K_COMMA": ",", "K_PERIOD": ".", "K_SLASH": "/", "K_SEMICOLON": ";",
+    "K_QUOTE": "'", "K_LEFTBRACKET": "[", "K_RIGHTBRACKET": "]",
+}
+
+# 选人界面几何常量：渲染与命中测试共用同一份，避免两处各写一遍导致点击偏移
+PILL_STEP, PILL_W, PILL_H, PILL_Y = 112, 92, 34, 150
+PILL_LEFT = -168
+CARD_W, CARD_H, CARD_GAP, CARD_Y = 322, 520, 26, 196
+CARD_PAD = 20                       # 卡内左右留白（文案不得越过它）
+GEM_ICON, GEM_ICON_PAD, GEM_ROW_GAP = 22, 8, 22
+GEM_CN = {"green": "绿宝石", "yellow": "黄宝石", "any": "任意宝石"}
+
+
+def gem_row_text(hero_gem: str) -> tuple[str, str]:
+    """英雄的亲和宝石 -> (左「亲和 X」, 右「奖励 X」) 两段文案。
+
+    单行拼成「亲和 绿宝石 · 同色 +1 奖励」在 18px 下宽 316px > 卡内可用 282px，
+    会顶到卡边（同类"文案超出盒子"事故）；拆成左右两段后最宽 231px。
+    """
+    return (f"亲和 {GEM_CN.get(hero_gem, hero_gem)}",
+            "同色 +1" if hero_gem != "any" else "全色 +1")
+
+
+def _short_key(src: str) -> str:
+    """输入源字符串 -> 卡面上显示的短名（手柄/轴类返回空串，由调用方兜底）。"""
+    if src.startswith("K_KP"):
+        return f"小键盘{src[4:]}"
+    if src in _KEY_ALIAS:
+        return _KEY_ALIAS[src]
+    if src.startswith("K_"):
+        return src[2:].upper()
+    return ""
+
 
 
 class CharacterSelectScene(Scene):
@@ -59,6 +99,7 @@ class CharacterSelectScene(Scene):
         self.phase = "heroes"  # heroes | level
         self.level_cursor = 0
         self.t = 0.0
+        self.hover = None            # ('pill', i) / ('card', i) / None —— 鼠标高亮
         self.logic = pygame.Surface((app.config.LOGIC_W, app.config.LOGIC_H))
         self.sprites = Sprites(app.resources, app.config) if getattr(app, "resources", None) else None
         self._start_timer = 0.0
@@ -91,17 +132,20 @@ class CharacterSelectScene(Scene):
         audio = getattr(self.app, "audio", None)
         if self.phase == "heroes":
             for slot in range(self.count):
-                if self._edge(slot, Action.MOVE_LEFT):
-                    self.heroes[slot] = HERO_ORDER[(HERO_ORDER.index(self.heroes[slot]) - 1) % len(HERO_ORDER)]
-                    self.ready[slot] = False
+                # 每帧都消费一次边沿（保持 _prev_held 新鲜），再按状态决定是否生效
+                left = self._edge(slot, Action.MOVE_LEFT)
+                right = self._edge(slot, Action.MOVE_RIGHT)
+                fire = self._edge(slot, Action.JUMP) or self._edge(slot, Action.SKILL_A)
+                # 「已准备」的槽位锁定英雄。为什么需要：P1 的技能键 J 同时是 P3 的
+                # MOVE_LEFT（§7.6 ② 同屏共用键是设计如此），不锁的话 P1 一按 J 就会
+                # 把 P3 已经选好的英雄转走、顺带清掉 P3 的准备状态。
+                if not self.ready[slot] and (left or right):
+                    step = -1 if left else 1
+                    idx = HERO_ORDER.index(self.heroes[slot])
+                    self.heroes[slot] = HERO_ORDER[(idx + step) % len(HERO_ORDER)]
                     if audio:
                         audio.play("hover")
-                if self._edge(slot, Action.MOVE_RIGHT):
-                    self.heroes[slot] = HERO_ORDER[(HERO_ORDER.index(self.heroes[slot]) + 1) % len(HERO_ORDER)]
-                    self.ready[slot] = False
-                    if audio:
-                        audio.play("hover")
-                if self._edge(slot, Action.JUMP) or self._edge(slot, Action.SKILL_A):
+                if fire:
                     self.ready[slot] = not self.ready[slot]
                     if audio:
                         audio.play("confirm" if self.ready[slot] else "back")
@@ -110,6 +154,7 @@ class CharacterSelectScene(Scene):
                 if self._start_timer > 0.4:
                     self.phase = "level"
                     self._start_timer = 0.0
+                    self.hover = None
                     if audio:
                         audio.play("confirm")
             else:
@@ -134,13 +179,26 @@ class CharacterSelectScene(Scene):
     # ------------------------------------------------------------------
     def handle_event(self, event) -> None:
         audio = getattr(self.app, "audio", None)
-        if event.type == pygame.MOUSEMOTION and self.phase == "level":
+        if self.phase == "heroes":
+            if event.type == pygame.MOUSEMOTION:
+                h = self._hero_hit(event.pos)
+                if h != self.hover:
+                    self.hover = h
+                    if h is not None and audio:
+                        audio.play("hover")
+            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self._hero_click(event.pos, audio)
+            elif event.type == pygame.KEYDOWN:
+                self._hero_key(event.key, audio)
+            return
+
+        if event.type == pygame.MOUSEMOTION:
             i = self._level_at(event.pos)
             if i is not None and i != self.level_cursor:
                 self.level_cursor = i
                 if audio:
                     audio.play("hover")
-        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and self.phase == "level":
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             i = self._level_at(event.pos)
             if i is not None:
                 self.level_cursor = i
@@ -150,32 +208,97 @@ class CharacterSelectScene(Scene):
             if k == pygame.K_ESCAPE:
                 if audio:
                     audio.play("back")
-                if self.phase == "level":
-                    self.phase = "heroes"
-                    self.ready = [False] * 4
-                else:
-                    from .menu import MenuScene
-                    self.app.scenes.switch(MenuScene(self.app))
-                return
-            if self.phase == "heroes":
-                if pygame.K_1 <= k <= pygame.K_4:
-                    new = k - pygame.K_0
-                    if new != self.count:
-                        self.count = new
-                        self.ready = [False] * 4
-                        if audio:
-                            audio.play("toggle")
-                elif k == pygame.K_RETURN:
-                    self.ready = [True] * 4
-                    if audio:
-                        audio.play("confirm")
-            else:
-                if pygame.K_1 <= k <= pygame.K_9:
-                    self.level_cursor = k - pygame.K_1
-                elif k == pygame.K_0:
-                    self.level_cursor = 9
-                elif k == pygame.K_RETURN:
-                    self._start()
+                self.phase = "heroes"
+                self.ready = [False] * 4
+                self.hover = None
+            elif pygame.K_1 <= k <= pygame.K_9:
+                self.level_cursor = k - pygame.K_1
+            elif k == pygame.K_0:
+                self.level_cursor = 9
+            elif k == pygame.K_RETURN:
+                self._start()
+
+    # ---- 选人阶段的两套操作入口（键盘 / 鼠标共用同一批状态改动）----
+    def _hero_key(self, k: int, audio) -> None:
+        if k == pygame.K_ESCAPE:
+            if audio:
+                audio.play("back")
+            from .menu import MenuScene
+            self.app.scenes.switch(MenuScene(self.app))
+        elif pygame.K_1 <= k <= pygame.K_4:
+            self._set_count(k - pygame.K_0, audio)
+        elif k == pygame.K_RETURN:
+            self.ready = [True] * 4
+            if audio:
+                audio.play("confirm")
+
+    def _set_count(self, n: int, audio) -> None:
+        if n == self.count:
+            return
+        self.count = n
+        self.ready = [False] * 4
+        if audio:
+            audio.play("toggle")
+
+    def _pill_rect(self, i: int) -> pygame.Rect:
+        cfg = self.app.config
+        r = pygame.Rect(0, 0, PILL_W, PILL_H)
+        r.center = (cfg.LOGIC_W // 2 + PILL_LEFT + i * PILL_STEP, PILL_Y)
+        return r
+
+    def _card_rect(self, i: int) -> pygame.Rect:
+        cfg = self.app.config
+        total = CARD_W * 4 + CARD_GAP * 3
+        x0 = (cfg.LOGIC_W - total) // 2
+        return pygame.Rect(x0 + i * (CARD_W + CARD_GAP), CARD_Y, CARD_W, CARD_H)
+
+    def _hero_hit(self, pos):
+        """鼠标命中：('pill', i) 改人数 / ('card', i) 加入或准备 / None。"""
+        for i in range(4):
+            if self._pill_rect(i).collidepoint(pos):
+                return ("pill", i)
+        for i in range(4):
+            if self._card_rect(i).collidepoint(pos):
+                return ("card", i)
+        return None
+
+    def _hero_click(self, pos, audio) -> bool:
+        hit = self._hero_hit(pos)
+        if hit is None:
+            return False
+        kind, i = hit
+        if kind == "pill":
+            self._set_count(i + 1, audio)
+            return True
+        if i < self.count:
+            # 已加入的玩家：点一下切换「准备」
+            self.ready[i] = not self.ready[i]
+            if audio:
+                audio.play("confirm" if self.ready[i] else "back")
+        else:
+            # 点「未加入」的卡片 = 让该玩家加入，并顺手就绪（少点一次）
+            self.count = i + 1
+            self.ready = [False] * 4
+            self.ready[i] = True
+            if audio:
+                audio.play("confirm")
+        return True
+
+    def _key_label(self, slot: int, action: str = "JUMP") -> str:
+        """该槽位的「就绪键」可读短名；有多个绑定时写成「主键 或 后备键」。
+
+        没有小键盘的笔记本按不出 K_KP8 —— 卡片上直接把两个键都写明，
+        比让玩家自己猜要友好得多（P4 的 JUMP = 小键盘8 或 /）。
+        """
+        im = getattr(self.app, "input", None)
+        slots = getattr(im, "slots", None) or []
+        if slot >= len(slots):
+            return "跳"
+        srcs = (slots[slot].get("bindings") or {}).get(action) or []
+        labels = [lab for lab in (_short_key(s) for s in srcs) if lab]
+        if not labels:
+            return "跳"
+        return " 或 ".join(labels[:2])
 
     def _start(self) -> None:
         audio = getattr(self.app, "audio", None)
@@ -199,8 +322,10 @@ class CharacterSelectScene(Scene):
         T.parallax_bg(g, self.sprites, "purple", self.t * 30, factor=0.18)
         if self._dim is None:
             ov = pygame.Surface((cfg.LOGIC_W, cfg.LOGIC_H), pygame.SRCALPHA)
+            # 只做"够读"的压暗：旧值 198->120 太黑，把卡面上的名字/定位/技能
+            # /能力条全吃掉了（玩家反馈"选英雄界面有点暗"）。
             for i in range(cfg.LOGIC_H):
-                a = int(198 - 78 * (i / max(1, cfg.LOGIC_H - 1)))
+                a = int(132 - 52 * (i / max(1, cfg.LOGIC_H - 1)))
                 pygame.draw.line(ov, (8, 12, 24, a), (0, i), (cfg.LOGIC_W, i))
             self._dim = ov
         g.blit(self._dim, (0, 0))
@@ -208,33 +333,39 @@ class CharacterSelectScene(Scene):
             self._render_heroes(g, cfg)
         else:
             self._render_levels(g, cfg)
-        T.vignette(g, 110)
+        T.vignette(g, 54)
         blit_letterbox(self.app.screen, g, cfg)
 
     # ---- 阶段 1：选人 ----
     def _render_heroes(self, g, cfg) -> None:
         T.text(g, self.app.resources, "选择英雄", 56, T.PALETTE["text"], center=(cfg.LOGIC_W // 2, 58), shadow_=True)
-        T.text(g, self.app.resources, "1/2/3/4 选择人数 · 各自 ← → 换英雄 · 跳/技能键「准备」 · Enter 一键全就绪 · ESC 返回",
-               20, T.PALETTE["muted"], center=(cfg.LOGIC_W // 2, 106))
-        # 人数胶囊
+        T.text(g, self.app.resources,
+                "点击胶囊 或 按 1/2/3/4 选人数 · 各自 ← → 换英雄 · 跳键 / 点击卡片「准备」"
+                " · Enter 一键全就绪 · ESC 返回",
+                20, T.PALETTE["muted"], center=(cfg.LOGIC_W // 2, 106))
+        # 人数胶囊（鼠标可点 → 3 人 / 4 人不再只能靠键盘）
         for i, n in enumerate("1234"):
-            T.pill(g, self.app.resources, (cfg.LOGIC_W // 2 - 168 + i * 112, 150), f"{n} 人",
-                   active=(i + 1 == self.count), w=92)
+            hovered = self.hover == ("pill", i)
+            T.pill(g, self.app.resources, self._pill_rect(i).center, f"{n} 人",
+                   active=(i + 1 == self.count) or hovered, w=PILL_W)
 
-        card_w, card_h, gap = 322, 520, 26
-        total = card_w * 4 + gap * 3
-        x0 = (cfg.LOGIC_W - total) // 2
-        y0 = 196
         for i in range(4):
-            self._hero_card(g, cfg, i, x0 + i * (card_w + gap), y0, card_w, card_h)
+            r = self._card_rect(i)
+            self._hero_card(g, cfg, i, r.x, r.y, r.w, r.h)
 
     def _hero_card(self, g, cfg, slot, x, y, w, h) -> None:
         res = self.app.resources
         active = slot < self.count
         hid = self.heroes[slot] if active else None
         accent = HERO_COLOR.get(hid, T.PALETTE["line"]) if active else T.PALETTE["line"]
-        border = T.PALETTE["ok"] if (active and self.ready[slot]) else (accent if active else T.PALETTE["line"])
-        T.glass(g, (x, y, w, h), radius=18, alpha=214 if active else 150, border=border,
+        hovered = self.hover == ("card", slot)
+        if active and self.ready[slot]:
+            border = T.PALETTE["ok"]
+        elif hovered:
+            border = T.PALETTE["accent"]
+        else:
+            border = accent if active else T.PALETTE["line"]
+        T.glass(g, (x, y, w, h), radius=18, alpha=236 if active else 172, border=border,
                 border_w=3 if active else 2)
         # 顶部玩家色带
         if active:
@@ -243,14 +374,18 @@ class CharacterSelectScene(Scene):
                T.PALETTE["text"] if active else T.PALETTE["muted"],
                center=(x + w // 2, y + 30))
         if active and self.ready[slot]:
-            T.pill(g, res, (x + w // 2, y + 62), "已准备", active=True, w=110)
+            T.pill(g, res, (x + w // 2, y + 62), "已准备", active=True, w=None)
         elif active:
-            T.pill(g, res, (x + w // 2, y + 62), "准备中", active=False, w=110)
+            # 把"该玩家该按什么键就绪"直接写在状态胶囊上：4 人同屏时每人的键位
+            # 都不一样，光写"准备中"等于没说（P4 尤其需要一个明确提示）。
+            T.pill(g, res, (x + w // 2, y + 62),
+                   f"准备中 · {self._key_label(slot)}", active=False, w=None)
 
         if not active:
             T.text(g, res, "未加入", 26, T.PALETTE["muted"], center=(x + w // 2, y + h // 2 - 10))
-            T.text(g, res, f"按 {slot + 1} 键加入", 19, T.PALETTE["muted"],
-                   center=(x + w // 2, y + h // 2 + 26))
+            T.text(g, res, "点击此卡加入", 19, T.PALETTE["accent"], center=(x + w // 2, y + h // 2 + 26))
+            T.text(g, res, f"或按 {slot + 1} 键", 17, T.PALETTE["muted"],
+                   center=(x + w // 2, y + h // 2 + 52))
             return
 
         hdef = hero_def(hid)
@@ -272,14 +407,20 @@ class CharacterSelectScene(Scene):
         # 名字 + 定位
         T.text(g, res, hdef["name"], 29, tuple(hdef["color"]), center=(x + w // 2, y + 276))
         T.text(g, res, role, 19, T.PALETTE["muted"], center=(x + w // 2, y + 302))
-        # 亲和宝石
-        gem = self.sprites.hero_gem(hid, 20) if self.sprites else None
-        gem_txt = {"green": "绿宝石", "yellow": "黄宝石", "any": "任意宝石"}.get(hdef["gem"], hdef["gem"])
-        label = res.font(18).render(f"亲和 {gem_txt}", True, T.PALETTE["muted"])
-        gx = x + w // 2 - (label.get_width() + (26 if gem else 0)) // 2
+        # 亲和宝石（亲和只影响奖励，任何英雄都能拿任何宝石 —— 否则单人关卡无解）
+        # 排版：左「亲和 <颜色>」+ 右「奖励」，避免一整行顶到卡边。
+        gem = self.sprites.hero_gem(hid, GEM_ICON) if self.sprites else None
+        left_s, right_s = gem_row_text(hdef["gem"])
+        f18 = res.font(18)
+        left, right = f18.render(left_s, True, T.PALETTE["muted"]), f18.render(right_s, True, accent)
+        icw = (gem.get_width() + GEM_ICON_PAD) if gem else 0
+        cy = y + 332
+        gx = x + w // 2 - (icw + left.get_width() + GEM_ROW_GAP + right.get_width()) // 2
         if gem:
-            g.blit(gem, (gx, y + 320))
-        g.blit(label, (gx + (26 if gem else 0), y + 322))
+            g.blit(gem, (gx, cy - gem.get_height() // 2))
+            gx += icw
+        g.blit(left, (gx, cy - left.get_height() // 2))
+        g.blit(right, (gx + left.get_width() + GEM_ROW_GAP, cy - right.get_height() // 2))
         # 能力条
         stats = HERO_STATS.get(hid, {})
         sy = y + 356
@@ -295,7 +436,7 @@ class CharacterSelectScene(Scene):
         b = SKILL_NAMES.get(hdef["skill_b"], hdef["skill_b"])
         self._skill_row(g, x + 24, sy + 8, "技能 A", a, accent)
         self._skill_row(g, x + 24, sy + 38, "技能 B", b, accent)
-        hint = "再按一次取消准备" if self.ready[slot] else "← → 换英雄 · 跳键准备"
+        hint = "已锁定 · 再按一次取消准备" if self.ready[slot] else "←→ 换英雄 · 也可点卡片准备"
         T.text(g, res, hint, 17, T.PALETTE["muted"], center=(x + w // 2, y + h - 20))
 
     def _skill_row(self, g, x, y, key, value, accent) -> None:

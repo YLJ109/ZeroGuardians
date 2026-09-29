@@ -43,11 +43,41 @@ DEFAULT_SLOTS: list[dict] = [
     {"device": "keyboard", "bindings": {
         "MOVE_LEFT": ["K_j"], "MOVE_RIGHT": ["K_l"], "JUMP": ["K_i"],
         "CROUCH": ["K_k"], "SKILL_A": ["K_u"], "SKILL_B": ["K_o"]}},
-    # P4 —— 小键盘区
+    # P4 —— 小键盘区（4399 同屏惯例）；笔记本普遍没有小键盘，所以每个动作
+    # 再挂一个右侧标点键作为后备，保证"没有小键盘也能四人同屏"。
     {"device": "keyboard", "bindings": {
-        "MOVE_LEFT": ["K_KP4"], "MOVE_RIGHT": ["K_KP6"], "JUMP": ["K_KP8"],
-        "CROUCH": ["K_KP5"], "SKILL_A": ["K_KP7"], "SKILL_B": ["K_KP9"]}},
+        "MOVE_LEFT": ["K_KP4", "K_COMMA"], "MOVE_RIGHT": ["K_KP6", "K_PERIOD"],
+        "JUMP": ["K_KP8", "K_SLASH"], "CROUCH": ["K_KP5", "K_SEMICOLON"],
+        "SKILL_A": ["K_KP7", "K_QUOTE"], "SKILL_B": ["K_KP9", "K_RIGHTBRACKET"]}},
 ]
+
+
+def _merge_defaults(slots: list[dict]) -> list[dict]:
+    """把默认键位里「该槽位缺失的键」补进去 —— 只追加，从不删玩家已有的键。
+
+    为什么需要：老版本写出的 `config/input.json` 里 P4 只有小键盘键，在没小键盘
+    的笔记本上永远无法就绪（也就永远选不了 4 人）。统一在这里补齐后备键即可自愈，
+    不必让玩家去删配置文件。玩家自加的键及其顺序完全保持原样。
+    仅对键盘槽位生效，手柄槽位不动。
+    """
+    out = []
+    for i, slot in enumerate(slots):
+        default = DEFAULT_SLOTS[i] if i < len(DEFAULT_SLOTS) else None
+        if (default is None
+                or slot.get("device", "keyboard") != "keyboard"
+                or default.get("device") != "keyboard"):
+            out.append(slot)
+            continue
+        merged = dict(slot)
+        bindings = {k: list(v) for k, v in (slot.get("bindings") or {}).items()}
+        for act, keys in default.get("bindings", {}).items():
+            cur = bindings.setdefault(act, [])
+            for k in keys:
+                if k not in cur:
+                    cur.append(k)
+        merged["bindings"] = bindings
+        out.append(merged)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +168,7 @@ def load_input_config(path: str | None = None) -> dict:
                 slots = raw
         except (json.JSONDecodeError, OSError):
             pass  # 回退默认
-    normalized = [_normalize_slot(s) for s in slots]
+    normalized = [_normalize_slot(s) for s in _merge_defaults(slots)]
     return {"slots": normalized}
 
 

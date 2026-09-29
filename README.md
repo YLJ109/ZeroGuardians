@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame](https://img.shields.io/badge/pygame-2.6-2C2D72?logo=python&logoColor=white)](https://www.pygame.org/)
-[![tests](https://img.shields.io/badge/tests-77%20passed-4CAF50)](#测试与自检)
+[![tests](https://img.shields.io/badge/tests-104%20passed-4CAF50)](#测试与自检)
 [![assets](https://img.shields.io/badge/assets-CC0%20%2B%20OFL-brightgreen)](#素材与许可)
 [![license](https://img.shields.io/badge/code-MIT-blue)](LICENSE)
 
@@ -138,7 +138,7 @@ ZeroGuardians/
 ## 测试与自检
 
 ```bash
-python tests/run.py                                            # 77 项断言
+python tests/run.py                                            # 104 项断言
 SDL_VIDEODRIVER=dummy python tools/render_check.py             # 全量场景截图自检
 SDL_VIDEODRIVER=dummy python tools/render_check.py --readme    # 重新生成本页截图
 SDL_VIDEODRIVER=dummy python tools/play_smoke.py               # 进关按键冒烟（6 英雄 × 5 关）
@@ -151,6 +151,8 @@ SDL_VIDEODRIVER=dummy python tools/play_smoke.py               # 进关按键冒
 - **真实物理回放**：单跳跨越 2 行台阶、上穿单向平台、爬梯登上平台、弹簧弹得比普通跳高、坠坑死亡并重生
 - **站立稳定性**：静止站立时 `grounded` 不得逐帧抖动、y 不得漂移（否则空中专用技能会在地面释放）
 - **技能**：12 个技能互不重复、全部有实现与中文名；`skills.py` 里每个 `player.<attr>` 都必须在真实 `Player` 上存在
+- **宝石收集**：单人任意英雄都能拿齐每关全部宝石（亲和只给 +1 奖励、不构成门槛）
+- **选人界面**：人数胶囊 / 英雄卡可鼠标点击、无小键盘也能让 4 人就绪、压暗不过重、卡面文案不出框
 - **静态结构**：墙 / 梯 / 弹簧 / 单向平台跑 300 帧后网格逐字节不变
 - **契约**：`level_facts` 的层序与道具归属、音频名全部能解析到真实文件、默认字体为已登记 OFL 且中文字宽等宽
 
