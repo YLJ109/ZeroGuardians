@@ -9,6 +9,7 @@ from zero_brother.world.level import load_level
 from zero_brother.world.world import World
 from zero_brother.world.tilemap import SOLID, GEM_GREEN, GEM_YELLOW, DOOR
 from zero_brother.levels.generate import generate_all, levels_dir
+from zero_brother.heroes.registry import HERO_ORDER
 
 LEVELS = levels_dir()
 
@@ -201,3 +202,231 @@ def test_full_app_gameplay_scene():
             app.input.poll([_key(pygame.K_w, down=False)])
     assert p.body.x > x0 + 40, "GameplayScene 下玩家应向右移动"
     assert True
+
+
+# ---------------------------------------------------------------------------
+# 宝石收集 / 通关判定
+#
+# 真事故（玩家报障："到了胜利点游戏没有结束，单人模式有些宝石吃不了"）：
+#   宝石按英雄亲和色做硬门槛（弓箭手=绿），黄宝石永远吃不到；
+#   但 gems_total 把两种颜色都算进通关目标 → 单人弓箭手最多 4/5 →
+#   终点门永远不开、关卡无解（第 1/2/4 关实测均如此）。
+# 下面这组用例把「谁能拿什么」和「门前为什么不开」钉死。
+# ---------------------------------------------------------------------------
+def _gem_cells(world):
+    return [(c, r) for r in range(world.map.rows) for c in range(world.map.cols)
+            if world.map.grid[r][c] in (GEM_GREEN, GEM_YELLOW)]
+
+
+def _grab_gems(world):
+    """把玩家依次瞬移到每颗宝石格中心并推进一帧，返回吃到的总数。"""
+    p = world.players[0]
+    t = world.tile
+    for c, r in _gem_cells(world):
+        p.alive = True
+        p.body.x = c * t + (t - p.body.w) / 2
+        p.body.y = r * t + (t - p.body.h) / 2
+        p.body.vx = p.body.vy = 0
+        world.update(1 / 60)
+    return world.gems_collected
+
+
+def test_single_player_archer_can_collect_every_gem_in_every_level():
+    """单人（弓箭手）必须能拿齐本关所有宝石 —— 否则终点门永远打不开。"""
+    generate_all(LEVELS)
+    for i in range(1, 16):
+        path = os.path.join(LEVELS, f"level_{i}.json")
+        if not os.path.exists(path):
+            continue
+        app, cfg = _app()
+        world = World(app, load_level(path), [(0, "archer")])
+        world.monsters.clear()               # 隔离：只验证收集，不被怪打断
+        total = world.gems_total
+        assert total > 0, f"第 {i} 关应至少有一颗宝石（通关目标）"
+        got = _grab_gems(world)
+        assert got == total, f"第 {i} 关单人弓箭手只能拿 {got}/{total} 颗宝石，关卡无解"
+
+
+def test_every_hero_can_collect_both_gem_colors():
+    """6 位英雄都必须两种颜色都能拿（亲和色只影响奖励，不能挡路）。"""
+    generate_all(LEVELS)
+    lvl = load_level(os.path.join(LEVELS, "level_4.json"))   # 4 绿 + 4 黄
+    for hid in HERO_ORDER:
+        app, cfg = _app()
+        world = World(app, lvl, [(0, hid)])
+        world.monsters.clear()
+        got = _grab_gems(world)
+        assert got == world.gems_total, f"{hid} 只能拿 {got}/{world.gems_total} 颗"
+
+
+def test_gem_affinity_grants_bonus_but_never_blocks():
+    """同色亲和 = 额外奖励；异色照拿不误，只是没有奖励。"""
+    generate_all(LEVELS)
+    lvl = load_level(os.path.join(LEVELS, "level_1.json"))
+    app, cfg = _app()
+    world = World(app, lvl, [(0, "archer")])          # 弓箭手亲和 = 绿
+    world.monsters.clear()
+    p = world.players[0]
+    t = world.tile
+
+    def touch(cell):
+        c, r = cell
+        p.body.x = c * t + (t - p.body.w) / 2
+        p.body.y = r * t + (t - p.body.h) / 2
+        p.body.vx = p.body.vy = 0
+        world.update(1 / 60)
+
+    cells = _gem_cells(world)
+    green = next((cc for cc in cells if world.map.grid[cc[1]][cc[0]] == GEM_GREEN), None)
+    yellow = next((cc for cc in cells if world.map.grid[cc[1]][cc[0]] == GEM_YELLOW), None)
+    assert green and yellow, "第 1 关应同时有绿宝石与黄宝石"
+
+    touch(green)
+    assert world.gems_collected == 1, "绿宝石应被收集"
+    assert world.gem_bonus == 1, "同色亲和应给 +1 奖励"
+
+    touch(yellow)
+    assert world.gems_collected == 2, "黄宝石**也**应被收集（不能因为亲和不同就拿不到）"
+    assert world.gem_bonus == 1, "异色宝石不应给亲和奖励"
+
+
+def test_door_hint_explains_why_it_is_locked():
+    """门前但宝石没集齐时，必须给出原因 —— 否则玩家只会觉得"游戏卡死没反应"。"""
+    generate_all(LEVELS)
+    app, cfg = _app()
+    world = World(app, load_level(os.path.join(LEVELS, "level_1.json")), [(0, "archer")])
+    world.monsters.clear()
+    door = next((c, r) for r in range(world.map.rows) for c in range(world.map.cols)
+                if world.map.grid[r][c] == DOOR)
+    p = world.players[0]
+    t = world.tile
+    p.body.x = door[0] * t + (t - p.body.w) / 2
+    p.body.y = door[1] * t + (t - p.body.h) / 2
+    world.update(1 / 60)
+    assert not world.won, "宝石没集齐不应通关"
+    assert world.door_hint and "宝石" in world.door_hint, f"应提示缺少宝石: {world.door_hint}"
+
+    # 集齐后提示消失并真正通关
+    world.gems_collected = world.gems_total
+    for r in range(world.map.rows):
+        for c in range(world.map.cols):
+            if world.map.grid[r][c] in (GEM_GREEN, GEM_YELLOW):
+                world.map.grid[r][c] = 0
+    world.update(1 / 60)
+    assert world.won, "集齐宝石 + 到门 → 应通关"
+
+
+def test_boss_level_door_hint_mentions_boss():
+    """Boss 关：宝石齐了但 Boss 没死，提示要说"先击败 Boss"。"""
+    generate_all(LEVELS)
+    app, cfg = _app()
+    world = World(app, load_level(os.path.join(LEVELS, "level_5.json")), [(0, "archer")])
+    world.monsters.clear()
+    for r in range(world.map.rows):
+        for c in range(world.map.cols):
+            if world.map.grid[r][c] in (GEM_GREEN, GEM_YELLOW):
+                world.map.grid[r][c] = 0
+    door = next((c, r) for r in range(world.map.rows) for c in range(world.map.cols)
+                if world.map.grid[r][c] == DOOR)
+    p = world.players[0]
+    t = world.tile
+    p.body.x = door[0] * t + (t - p.body.w) / 2
+    p.body.y = door[1] * t + (t - p.body.h) / 2
+    world.update(1 / 60)
+    assert not world.won
+    assert world.door_hint and "Boss" in world.door_hint, f"应提示先打 Boss: {world.door_hint}"
+
+
+# ---------------------------------------------------------------------------
+# 通关结算：必须"结束"本关并给出去处，而不是默默无事发生 / 自动踢回主菜单
+# ---------------------------------------------------------------------------
+def _win_scene(app, level_name="level_1.json", picks=((0, "archer"), (1, "builder"))):
+    from zero_brother.scenes.gameplay import GameplayScene
+    lvl = load_level(os.path.join(LEVELS, level_name))
+    scene = GameplayScene(app, lvl, list(picks))
+    app.scenes.switch(scene)
+    w = scene.world
+    for r in range(w.map.rows):
+        for c in range(w.map.cols):
+            if w.map.grid[r][c] in (GEM_GREEN, GEM_YELLOW):
+                w.map.grid[r][c] = 0
+    w.gems_collected = w.gems_total
+    door = next((c, r) for r in range(w.map.rows) for c in range(w.map.cols)
+                if w.map.grid[r][c] == DOOR)
+    p = w.players[0]
+    p.body.x = door[0] * w.tile
+    p.body.y = door[1] * w.tile
+    for _ in range(4):
+        scene.fixed_update(1 / 60)
+    return scene
+
+
+def test_win_opens_result_panel_instead_of_returning_to_menu():
+    """通关后停在结算面板等玩家选择；不能自动跳走（原实现 2.2s 后踢回主菜单）。"""
+    generate_all(LEVELS)
+    from zero_brother.core.app import App
+    from zero_brother.scenes.gameplay import GameplayScene
+    app = App(Config.load())
+    scene = _win_scene(app)
+    assert scene.world.won, "前置条件：应已通关"
+
+    for _ in range(60 * 8):                  # 远超原来的 2.2s 自动返回阈值
+        scene.fixed_update(1 / 60)
+    assert isinstance(app.scenes.current, GameplayScene), "通关后不应自动离开本关"
+    scene.render(0)                          # 结算面板渲染不得崩
+    keys = [b["key"] for b in scene._result_buttons()]
+    assert "next" in keys, f"非最后一关必须提供「下一关」: {keys}"
+    assert {"replay", "select", "menu"} <= set(keys), f"应提供重玩/选关/主菜单: {keys}"
+
+
+def test_result_next_advances_to_the_following_level():
+    generate_all(LEVELS)
+    from zero_brother.core.app import App
+    from zero_brother.scenes.gameplay import GameplayScene
+    app = App(Config.load())
+    scene = _win_scene(app, "level_1.json")
+    scene.handle_event(_key(pygame.K_RETURN))
+    cur = app.scenes.current
+    assert isinstance(cur, GameplayScene) and cur.level.id == 2, \
+        f"应进入第 2 关，实际: {getattr(getattr(cur, 'level', None), 'id', None)}"
+
+
+def test_result_select_returns_to_level_select():
+    """玩家要的「显示选人和关卡」：结算面板能回到选关阶段。"""
+    generate_all(LEVELS)
+    from zero_brother.core.app import App
+    from zero_brother.scenes.select import CharacterSelectScene
+    app = App(Config.load())
+    scene = _win_scene(app, "level_3.json", ((0, "ninja"), (1, "warlock")))
+    scene.handle_event(_key(pygame.K_l))
+    cur = app.scenes.current
+    assert isinstance(cur, CharacterSelectScene), "按 L 应回到选人/选关场景"
+    assert cur.phase == "level", f"应直接落在选关阶段: {cur.phase}"
+    assert cur.count == 2, "应保留队伍人数"
+    assert cur.heroes[0] == "ninja" and cur.heroes[1] == "warlock", "应保留英雄选择"
+    assert cur.level_cursor == 2, f"光标应停在刚通关的关卡: {cur.level_cursor}"
+
+
+def test_result_replay_rebuilds_the_same_level():
+    generate_all(LEVELS)
+    from zero_brother.core.app import App
+    from zero_brother.scenes.gameplay import GameplayScene
+    app = App(Config.load())
+    scene = _win_scene(app, "level_3.json")
+    scene.handle_event(_key(pygame.K_r))
+    cur = app.scenes.current
+    assert isinstance(cur, GameplayScene) and cur.level.id == 3
+    assert not cur.world.won, "重玩应是干净状态"
+    assert [p.hero_id for p in cur.world.players] == ["archer", "builder"], "英雄应沿用"
+
+
+def test_final_level_result_has_no_next_button():
+    generate_all(LEVELS)
+    from zero_brother.core.app import App
+    from zero_brother.scenes.gameplay import GameplayScene
+    app = App(Config.load())
+    lvl = load_level(os.path.join(LEVELS, "level_15.json"))
+    scene = GameplayScene(app, lvl, [(0, "archer")])
+    keys = [b["key"] for b in scene._result_buttons()]
+    assert "next" not in keys, f"最后一关不应有「下一关」: {keys}"
+    assert "select" in keys and "menu" in keys

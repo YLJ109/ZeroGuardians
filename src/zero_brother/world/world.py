@@ -68,11 +68,23 @@ class World:
         # 语义事件队列：实体/触发逻辑只 emit，由场景层统一消费（播放音效/震动等）
         self.events: list[str] = []
         self.crates = self.cfg.TEAM_CRATES
+        # 宝石全部计入通关目标，且**任何英雄都能拾取**。
+        # 曾经这里按英雄亲和色做硬门槛（绿/黄），结果是单人弓箭手（亲和=绿）永远
+        # 吃不到黄宝石 → 第 1 关目标 5 颗最多拿 4 颗 → 终点门永远不开、关卡无解。
+        # 关卡是按主题预生成、与队伍无关的，所以"按队伍过滤"根本没法平衡；
+        # 现在改成：都能拿，同色亲和额外奖励金币（见 _triggers）。
         self.gems_total = self._count_tiles(GEM_GREEN, GEM_YELLOW)
+        self.gem_bonus = 0
         self.coins_total = self._count_tiles(COIN)
         self.gems_collected = 0
         self.coins = 0
+        self.deaths = 0
         self.won = False
+        # 到门前但开不了门 / 碰到拿不了的宝石时，给 HUD 用的提示（避免"没反应"观感）
+        self.door_hint: str | None = None
+        self.gem_hint: str | None = None
+        self.hint_t = 0.0
+        self._deny_cd = 0.0
         self.pending_respawn: list[tuple[Player, float]] = []
         # 关卡底部死亡线：掉出世界（掉进深坑）即判定阵亡并重生，避免无限下坠
         self.pit_y = self.map.rows * self.tile + self.cfg.PLAYER_HITBOX[1] * 2
@@ -124,7 +136,18 @@ class World:
         return n
 
     def _count_gems(self) -> int:
+        """剩余需要收集的宝石数。"""
         return self._count_tiles(GEM_GREEN, GEM_YELLOW)
+
+    def _set_hint(self, kind: str, text: str, t: float = 1.6) -> None:
+        if kind == "door":
+            self.door_hint = text
+        else:
+            self.gem_hint = text
+        self.hint_t = max(self.hint_t, t)
+        if self._deny_cd <= 0 and kind == "door":
+            self.emit("deny")
+            self._deny_cd = 0.9
 
     # ------------------------------------------------------------------
     def emit(self, name: str) -> None:
@@ -141,11 +164,21 @@ class World:
         if not p.alive:
             return
         p.alive = False
+        self.deaths += 1
         self.emit("hurt")
         self.pending_respawn.append((p, self.cfg.GAMEPLAY["respawn_time"]))
 
     # ------------------------------------------------------------------
     def update(self, dt: float) -> None:
+        # HUD 提示计时（到门前开不了门 / 碰到拿不了的宝石）
+        if self.hint_t > 0:
+            self.hint_t = max(0.0, self.hint_t - dt)
+            if self.hint_t == 0.0:
+                self.door_hint = None
+                self.gem_hint = None
+        if self._deny_cd > 0:
+            self._deny_cd = max(0.0, self._deny_cd - dt)
+
         # 重生计时
         new_pending = []
         for p, t in self.pending_respawn:
@@ -212,13 +245,21 @@ class World:
                     self.emit("coin")
                     self.fx.append({"type": "pop", "x": sx, "y": sy, "life": 0.35})
                 elif cell in (GEM_GREEN, GEM_YELLOW):
+                    # 任何英雄都能拾取（门槛会直接让单人关卡无解）。
+                    # 同色亲和 = 额外奖励 1 金币，保留 6 英雄的色差意义。
                     color = "green" if cell == GEM_GREEN else "yellow"
                     aff = p.hero["gem"]
+                    self.map.remove_item(c, r)
+                    self.gems_collected += 1
+                    self.emit("gem")
+                    self.fx.append({"type": "pop", "x": sx, "y": sy, "life": 0.4})
                     if aff == "any" or aff == color:
-                        self.map.remove_item(c, r)
-                        self.gems_collected += 1
-                        self.emit("gem")
-                        self.fx.append({"type": "pop", "x": sx, "y": sy, "life": 0.4})
+                        # 同色亲和 = 额外奖励分（单独计数，不混进金币统计，
+                        # 否则金币胶囊会出现 "8 / 7" 这种读数）
+                        self.gem_bonus += 1
+                        cn = "绿" if color == "green" else "黄"
+                        self.gem_hint = f"同色亲和（{cn}）· 奖励 +1"
+                        self.hint_t = max(self.hint_t, 1.1)
             # 地刺
             for (sx, sy) in [(b.cx, b.y + b.h - 6), (b.x + 4, b.y + b.h - 2), (b.x + b.w - 4, b.y + b.h - 2)]:
                 if self.map.cell_at(sx, sy) == SPIKE:
@@ -245,6 +286,10 @@ class World:
                     if not self.won:
                         self.emit("win")
                     self.won = True
+                else:
+                    # 门是锁着的：把「为什么开不了」说出来，否则玩家只会觉得游戏卡死
+                    why = f"还差 {remaining} 颗宝石" if remaining else "先击败 Boss"
+                    self._set_hint("door", f"终点门未开启 · {why}")
 
     # ------------------------------------------------------------------
     def draw(self, surface: pygame.Surface) -> None:

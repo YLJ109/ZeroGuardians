@@ -138,9 +138,8 @@ def validate_level(level: Level, cfg) -> list[str]:
         errs.append(f"终点门数量 {n_door} 应为 1")
     if n_players < 1:
         errs.append("缺少玩家出生点")
-    # 宝石死局：存在某色宝石却无任何可收集英雄（在菜单选人后二次校验）
-    if (n_green or n_yellow) and "M" not in flat:
-        pass  # 怪物非必需
+    # 注：宝石不再按英雄亲和做硬门槛（任何英雄都能拾取，同色只给奖励），
+    # 所以没有"某色宝石无英雄可拿"的死局，这里只需保证宝石数非零即可。
 
     # 怪物脚下须有可站立面（地形/静态墙；单向平台与弹簧不作为刷怪点）
     grid = [[level.rows[r][c] for c in range(len(level.rows[0]))] for r in range(len(level.rows))]

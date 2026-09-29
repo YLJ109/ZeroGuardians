@@ -129,20 +129,28 @@ class Sprites:
     # ------------------------------------------------------------------
     # 基础：加载 + 缩放/翻转/调色 + 缓存
     # ------------------------------------------------------------------
-    def _load(self, rel, w, h, flip=False, tint=None, keep_aspect=True):
-        key = (rel, w, h, flip, tint, keep_aspect)
+    def _load(self, rel, w, h, flip=False, tint=None, keep_aspect=True, smooth=True):
+        """载入并按目标尺寸缩放。
+
+        ``smooth=False`` 用最近邻：Kenney 的 HUD 像素图标/数字本身是 64² 的粗像素画，
+        缩到 HUD 的 24~34px 时若用平滑缩放，笔画会被插值糊成"空心轮廓"——
+        数字 1 看起来不像 1、4 糊成一团。像素画在小尺寸下必须用最近邻才清晰。
+        地形/角色等由瓦片尺寸决定的大图仍走平滑缩放（非整数倍降采样更不容易出锯齿）。
+        """
+        key = (rel, w, h, flip, tint, keep_aspect, smooth)
         if key in self._cache:
             return self._cache[key]
         src = self.res.image(rel)
         out = None
         if src is not None:
+            scale = pygame.transform.smoothscale if smooth else pygame.transform.scale
             if keep_aspect:
                 sw, sh = src.get_size()
                 s = min(w / sw, h / sh)
                 nw, nh = max(1, int(sw * s)), max(1, int(sh * s))
-                out = pygame.transform.smoothscale(src, (nw, nh))
+                out = scale(src, (nw, nh))
             else:
-                out = pygame.transform.smoothscale(src, (w, h))
+                out = scale(src, (w, h))
             if tint is not None:
                 t = out.copy()
                 t.fill(tint, special_flags=pygame.BLEND_RGB_MULT)
@@ -234,16 +242,16 @@ class Sprites:
     def gem(self, color: str, size: int):
         name = {"green": "gem_green", "yellow": "gem_yellow",
                 "red": "gem_red", "blue": "gem_blue"}.get(color, "gem_green")
-        return self._load(f"{_TL}/{name}.png", size, size)
+        return self._load(f"{_TL}/{name}.png", size, size, smooth=False)
 
     def coin(self, size: int):
-        return self._load(f"{_TL}/coin_gold.png", size, size)
+        return self._load(f"{_TL}/coin_gold.png", size, size, smooth=False)
 
     def spike(self, size: int):
-        return self._load(f"{_TL}/spikes.png", size, size)
+        return self._load(f"{_TL}/spikes.png", size, size, smooth=False)
 
     def crate(self, size: int):
-        return self._load(f"{_TL}/block_plank.png", size, size)
+        return self._load(f"{_TL}/block_plank.png", size, size, smooth=False)
 
     def wall(self, theme: str, size: int):
         """墙体/棱柱：静态实心块（无重力），与地形块刻意区分。"""
@@ -354,7 +362,8 @@ class Sprites:
         return self._load(f"{_TL}/{name}.png", size, size)
 
     def digit(self, d: int, size: int = 22):
-        return self._load(f"{_TL}/hud_character_{d}.png", size, size)
+        # 像素数字必须最近邻缩放，否则 24px 下"1"糊成竖条、"4"糊成一团（实测）。
+        return self._load(f"{_TL}/hud_character_{d}.png", size, size, smooth=False)
 
     def number(self, value: int, size: int = 22, spacing: int = 2):
         key = ("num", value, size, spacing)
