@@ -552,3 +552,64 @@ def test_coin_and_gem_are_counted_separately():
     world.update(1 / 60)
     assert world.coins == 1, f"金币应被收集: {world.coins}"
     assert world.map.grid[target[1]][target[0]] == 0, "金币应从网格移除"
+
+
+def test_resting_body_stays_grounded_without_jitter():
+    """静止站在地面上：grounded 必须**每帧都为真**，且 y 不得漂移。
+
+    回归事故：下落碰撞用 ``int((y+h-1)//t)`` 找"身体所占最下一行"，落地解算
+    ``y = row*t - h`` 让脚底**恰好**压在瓦片顶边（bottom == row*t）。下一帧重力
+    把脚底推进 0.5px，``(y+h-1)`` 又落回**上一行** → 检不到地面 → grounded 翻
+    False，要再掉 1px 才重新踩到。于是静止站立时 grounded / vy / y 逐帧抖动，
+    后果：只允许空中释放的技能（远跳 / 重踏）在地面就能放，且角色会在
+    idle / 跳跃动画之间闪帧。修复见 physics/body.py 的 ``_settle_on_ground``。
+    """
+    rows = [
+        "........",
+        "........",
+        "########",
+    ]
+    world = _map(rows)                    # 地面在 row2，顶面 y = 100
+    b = Body(100, 0, 44, 56)
+    for _ in range(60):                   # 先落到地面
+        b.vy += 1800 * (1 / 60)
+        b.move_and_collide(world, 1 / 60)
+    assert b.grounded, "前置条件：应已站在地面上"
+    assert abs((b.y + b.h) - 100) < 0.01, f"脚底应贴合地面顶面: {b.y + b.h}"
+
+    ys, grounded = [], []
+    for _ in range(30):                   # 之后静止模拟 0.5s
+        b.vy += 1800 * (1 / 60)           # 每帧照常施加重力
+        b.move_and_collide(world, 1 / 60)
+        ys.append(round(b.y, 4))
+        grounded.append(b.grounded)
+
+    assert all(grounded), f"静止站立时 grounded 不得逐帧抖动，实测: {grounded}"
+    assert len(set(ys)) == 1, f"静止站立时 y 不得漂移，实测: {sorted(set(ys))}"
+    assert b.vy == 0.0, f"静止站立时 vy 应被清零: {b.vy}"
+
+
+def test_resting_on_oneway_platform_is_also_stable():
+    """单向平台上静止同样要稳定（不能因为 0.5px 容差被反复穿透/吸附）。"""
+    rows = [
+        "........",
+        "........",
+        "..====..",     # 单向平台在 row2，顶面 y = 100
+        "........",
+        "........",
+        "########",
+    ]
+    world = _map(rows)
+    b = Body(100, 0, 44, 56)
+    for _ in range(60):
+        b.vy += 1800 * (1 / 60)
+        b.move_and_collide(world, 1 / 60)
+    assert b.grounded, "应已站在单向平台上"
+    assert abs((b.y + b.h) - 100) < 0.01, f"脚底应贴合单向平台顶面: {b.y + b.h}"
+
+    grounded = []
+    for _ in range(30):
+        b.vy += 1800 * (1 / 60)
+        b.move_and_collide(world, 1 / 60)
+        grounded.append(b.grounded)
+    assert all(grounded), f"单向平台上静止不得抖动，实测: {grounded}"

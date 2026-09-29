@@ -76,7 +76,7 @@ def slam(player, game, dt):
     gp = game.cfg.GAMEPLAY
     if not _edge(player, "SKILL_A"):
         return
-    if player.grounded or player.cooldowns["slam"] > 0:
+    if player.body.grounded or player.cooldowns["slam"] > 0:
         return
     player.cooldowns["slam"] = gp["slam_cooldown"]
     player.body.vy = gp["slam_vy"]
@@ -141,7 +141,7 @@ def lift_throw(player, game, dt):
     pc, pr = int(player.body.cx // t), int((player.body.y + player.body.h + 2) // t)
     if player.carry_box is None:
         for b in list(game.boxes):
-            if abs(b.body.cx - player.body.cx) < t and abs(b.body.cy - player.body.cy) < t:
+            if abs(b.cx - player.body.cx) < t and abs(b.cy - player.body.cy) < t:
                 game.map.set_cell(b.col, b.row, 0)
                 game.boxes.remove(b)
                 player.carry_box = (b.col, b.row)
@@ -166,7 +166,7 @@ def lift_throw(player, game, dt):
 def double_jump(player, game, dt):
     if not _edge(player, "SKILL_A"):
         return
-    if player.grounded or player.air_jumps <= 0:
+    if player.body.grounded or player.air_jumps <= 0:
         return
     player.air_jumps -= 1
     player.body.vy = game.cfg.GAMEPLAY["double_jump_vy"]
@@ -177,7 +177,7 @@ def long_jump(player, game, dt):
     gp = game.cfg.GAMEPLAY
     if not _edge(player, "SKILL_B"):
         return
-    if player.grounded or player.air_jumps <= 0:
+    if player.body.grounded or player.air_jumps <= 0:
         return
     player.air_jumps -= 1
     player.long_jump_timer = gp["long_jump_time"]

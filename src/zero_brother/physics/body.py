@@ -86,3 +86,40 @@ class Body:
                         self.y = (row + 1) * t
                         self.vy = 0
                         break
+        # ---- 站立稳定性：脚底补探测 ----
+        # 见 _settle_on_ground 的说明。缺了它，静止站立时 grounded 会逐帧抖动。
+        if not self.grounded and self.vy >= 0:
+            self._settle_on_ground(world)
+
+    def _settle_on_ground(self, world) -> bool:
+        """脚底正下方（≤0.5px 容差）若有可站立瓦片，则吸附上去并置 grounded。
+
+        为什么必须有这一步
+        ------------------
+        下落碰撞用 ``int((y + h - 1) // t)`` 找"身体所占的最下一行"，这是为了避免
+        把脚底当成包含端点。但落地解算 ``y = row*t - h`` 让脚底**恰好**压在瓦片
+        顶边（bottom == row*t）：下一帧重力把脚底推进 0.5px，``(y+h-1)`` 又落回
+        **上一行** → 检不到地面 → ``grounded`` 翻 False，要再掉 1px 才重新踩到。
+
+        结果就是**静止站立时 grounded / vy / y 三者逐帧抖动**，副作用：
+          - 只允许空中释放的技能（远跳 / 重踏）在地面上就能放；
+          - ``draw()`` 里 ``not grounded → 跳跃帧``，站立角色在 idle/跳跃动画间闪帧；
+          - 土狼时间与空中跳次数被反复重置，跳跃手感漂移。
+        这里显式补一次地面探测，把静止状态钉死。
+        """
+        t = world.tile
+        bottom = self.y + self.h
+        row = int((bottom + 0.5) // t)          # 0.5 与单向平台判定同一容差口径
+        if row * t > bottom + 0.5:
+            return False
+        c0 = int(self.x // t)
+        c1 = int((self.x + self.w - 1) // t)
+        for c in range(c0, c1 + 1):
+            oneway = world.is_oneway_cell(c, row) and bottom <= row * t + 0.5
+            if world.is_solid_cell(c, row) or oneway:
+                self.y = row * t - self.h
+                self.vy = 0.0
+                self.grounded = True
+                self.floor_cell = (c, row)
+                return True
+        return False

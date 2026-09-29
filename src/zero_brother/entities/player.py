@@ -243,7 +243,7 @@ class Player:
                 if abs(m.body.cx - b.cx) < gp["slam_radius"] and abs(m.body.cy - b.cy) < gp["slam_radius"]:
                     m.dead = True
             for bx in list(game.boxes):
-                if abs(bx.body.cx - b.cx) < gp["slam_radius"] and abs(bx.body.cy - b.cy) < gp["slam_radius"]:
+                if abs(bx.cx - b.cx) < gp["slam_radius"] and abs(bx.cy - b.cy) < gp["slam_radius"]:
                     game.boxes.remove(bx)
 
         # 冷却 / 计时衰减

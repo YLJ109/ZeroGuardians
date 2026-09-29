@@ -19,6 +19,16 @@ class Box:
     def body_rect(self) -> pygame.Rect:
         return pygame.Rect(int(self.x), int(self.y), self.size, self.size)
 
+    # 与 physics.Body 保持一致的「中心点」接口：技能层的范围判定统一读 cx/cy，
+    # 避免出现 `box.body.cx` 这种不存在的属性访问（Box 是轻量实体，没有 Body）。
+    @property
+    def cx(self) -> float:
+        return self.x + self.size / 2
+
+    @property
+    def cy(self) -> float:
+        return self.y + self.size / 2
+
     def draw(self, surface, cam):
         x, y = self.x - cam.world_left, self.y - cam.world_top
         sp = getattr(self, "game", None) and getattr(self.game, "sprites", None)
