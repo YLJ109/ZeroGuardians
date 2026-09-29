@@ -43,6 +43,17 @@ NUM_SIZE = 28
 RESULT_BOX = (1060, 440)
 RESULT_BTN = (246, 74, 12)
 
+# 顶部右「关卡徽标」排版常量。渲染与 tests/test_layout.py 共用，避免漂移。
+# 徽标高 50（与左侧资源胶囊同高）；内部两行：上行「第 N 关」(小) + 下行关卡名(大)。
+# 经真实 CJK 字体墨迹量宽（get_bounding_rect）校验：label 墨迹 9..27、
+# name 墨迹 27..48，均在 0..50 内、互不重叠、左右均留边距。
+BADGE_H = 50
+BADGE_PAD_X = 18
+BADGE_LABEL_SZ = 18
+BADGE_NAME_SZ = 22
+BADGE_LABEL_DY = 4
+BADGE_NAME_DY = 20
+
 
 class GameplayScene(Scene):
     def __init__(self, app, level, hero_picks):
@@ -278,12 +289,14 @@ class GameplayScene(Scene):
         # ---- 顶部右：关卡徽标（先算好矩形，好让队伍牌占据中间的剩余空间）----
         label = f"第 {self.level.id} 关"
         name = self.level.name or ""
-        nw = res.font(24).size(name)[0]
+        nw = res.font(BADGE_NAME_SZ).size(name)[0]
         bw = max(176, nw + 40)
-        rbox = (cfg.LOGIC_W - bw - 16, cy, bw, 50)
+        rbox = (cfg.LOGIC_W - bw - 16, cy, bw, BADGE_H)
         T.glass(self.logic, rbox, radius=13, border=T.PALETTE["accent"])
-        T.text(self.logic, res, label, 18, T.PALETTE["muted"], topleft=(rbox[0] + 18, rbox[1] + 6))
-        T.text(self.logic, res, name, 24, T.PALETTE["text"], topleft=(rbox[0] + 18, rbox[1] + 22))
+        T.text(self.logic, res, label, BADGE_LABEL_SZ, T.PALETTE["muted"],
+               topleft=(rbox[0] + BADGE_PAD_X, rbox[1] + BADGE_LABEL_DY))
+        T.text(self.logic, res, name, BADGE_NAME_SZ, T.PALETTE["text"],
+               topleft=(rbox[0] + BADGE_PAD_X, rbox[1] + BADGE_NAME_DY))
 
         # ---- 顶部中：玩家队伍牌 ----
         # 全部收进顶部信息带：底部留给画面本体（原来压在左下角会挡住地面与角色）。
