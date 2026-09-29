@@ -6,7 +6,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![pygame](https://img.shields.io/badge/pygame-2.6-2C2D72?logo=python&logoColor=white)](https://www.pygame.org/)
-[![tests](https://img.shields.io/badge/tests-66%20passed-4CAF50)](#测试与自检)
+[![tests](https://img.shields.io/badge/tests-77%20passed-4CAF50)](#测试与自检)
 [![assets](https://img.shields.io/badge/assets-CC0%20%2B%20OFL-brightgreen)](#素材与许可)
 [![license](https://img.shields.io/badge/code-MIT-blue)](LICENSE)
 
@@ -132,15 +132,16 @@ ZeroGuardians/
 ├── docs/                        # GDD、素材说明、README 截图
 ├── prototypes/                  # 启动动画风格原型
 ├── tests/                       # tests/run.py 一键跑（不依赖 pytest）
-└── tools/                       # render_check.py · build_font_subset.py
+└── tools/                       # render_check.py · play_smoke.py · build_font_subset.py
 ```
 
 ## 测试与自检
 
 ```bash
-python tests/run.py                                            # 66 项断言
+python tests/run.py                                            # 77 项断言
 SDL_VIDEODRIVER=dummy python tools/render_check.py             # 全量场景截图自检
-SDL_VIDEODRIVER=dummy python tools/render_check.py --readme --out docs/screenshots
+SDL_VIDEODRIVER=dummy python tools/render_check.py --readme    # 重新生成本页截图
+SDL_VIDEODRIVER=dummy python tools/play_smoke.py               # 进关按键冒烟（6 英雄 × 5 关）
 ```
 
 测试覆盖的重点不是"函数能调用"，而是**设计约束本身**：
@@ -148,8 +149,14 @@ SDL_VIDEODRIVER=dummy python tools/render_check.py --readme --out docs/screensho
 - **关卡结构**：缺口 ≤3 格、门前净空、出生净空、要素不重叠、难度曲线单调、生成确定性
 - **可达性**：站位 BFS（`tests/test_verticality.py`）证明每颗宝石 / 每个金币可达，没有"看得见拿不到"
 - **真实物理回放**：单跳跨越 2 行台阶、上穿单向平台、爬梯登上平台、弹簧弹得比普通跳高、坠坑死亡并重生
+- **站立稳定性**：静止站立时 `grounded` 不得逐帧抖动、y 不得漂移（否则空中专用技能会在地面释放）
+- **技能**：12 个技能互不重复、全部有实现与中文名；`skills.py` 里每个 `player.<attr>` 都必须在真实 `Player` 上存在
 - **静态结构**：墙 / 梯 / 弹簧 / 单向平台跑 300 帧后网格逐字节不变
 - **契约**：`level_facts` 的层序与道具归属、音频名全部能解析到真实文件、默认字体为已登记 OFL 且中文字宽等宽
+
+> `tools/play_smoke.py` 走的是**真实场景路径**（App → GameplayScene → 按键 → 渲染）。
+> 这一点很关键：`main.py --headless --frames N` 只跑开场 splash，既不进关也不按键，
+> 因此"进关后按某个键才崩"的问题必须靠这个工具兜住。
 
 ## 关卡设计硬约束（改生成器前先看）
 

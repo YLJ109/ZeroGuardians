@@ -6,9 +6,8 @@
     # 全量自检（默认输出 .workbuddy/tmp_shots/）
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python tools/render_check.py
 
-    # 只出 README 用的封面图（8 张，命名精简）
-    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python tools/render_check.py \
-        --readme --out docs/screenshots
+    # 只出 README 用的封面图（8 张，默认直接写进 docs/screenshots/）
+    SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python tools/render_check.py --readme
 """
 from __future__ import annotations
 
@@ -28,6 +27,7 @@ from zero_brother.config.settings import Config  # noqa: E402
 from zero_brother.core.app import App  # noqa: E402
 
 OUT = os.path.join(_ROOT, ".workbuddy", "tmp_shots")
+README_OUT = os.path.join(_ROOT, "docs", "screenshots")
 
 
 def _shot(app: App, scene, name: str, ticks: int = 20, alpha: float = 0.0):
@@ -131,10 +131,14 @@ def _full_set(app: App, d: str) -> None:
 def main(argv=None):
     global OUT
     parser = argparse.ArgumentParser(description="无头渲染自检 / README 封面图生成")
-    parser.add_argument("--out", default=OUT, help="PNG 输出目录")
+    parser.add_argument("--out", default=None,
+                        help="PNG 输出目录（默认：--readme 时 docs/screenshots/，否则 .workbuddy/tmp_shots/）")
     parser.add_argument("--readme", action="store_true", help="只出 README 封面图（8 张）")
     args = parser.parse_args(argv)
-    OUT = os.path.abspath(args.out)
+    # --readme 的产物是给 README 引用的，必须落到 docs/screenshots/，否则截图会
+    # 静默写进 .workbuddy/ 而被 .gitignore 吃掉，README 里的图就再不更新。
+    default_out = README_OUT if args.readme else OUT
+    OUT = os.path.abspath(args.out or default_out)
     os.makedirs(OUT, exist_ok=True)
 
     app = App(Config())
